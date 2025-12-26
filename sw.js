@@ -1,5 +1,5 @@
 const CACHE_NAME = 'ar-drive-nav-v1';
-const urlsToCache = ['/', 'index.html'];
+const urlsToCache = ['/', '/index.html'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
