@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Nav-AR Pro Final</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+
+        /* Buscador Superior */
+        #ui-top {
+            position: fixed; top: 20px; width: 100%; text-align: center; z-index: 10000;
+        }
+        input {
+            width: 80%; padding: 15px; border-radius: 30px; border: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 16px; outline: none;
+        }
+
+        /* Contenedor Mapa 2D (Abajo Derecha - Estilo Google) */
+        #map-container {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 160px; height: 160px;
+            border-radius: 20px; border: 4px solid white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            z-index: 9999; overflow: hidden; background: white;
+        }
+        #map { width: 100%; height: 100%; }
+
+        /* Pantalla de Inicio / Permisos */
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #001a2c 0%, #000000 100%);
+            z-index: 11000; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; color: white;
+        }
+        button {
+            padding: 18px 35px; background: #00f2ff; border: none; 
+            border-radius: 50px; font-weight: bold; font-size: 18px; cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="overlay">
+        <h1>NAV-AR PRO</h1>
+        <button onclick="iniciarSistema()">INICIAR NAVEGACIÓN</button>
+        <p style="margin-top:20px; font-size:12px; opacity:0.6;">Acepta permisos de Cámara y Ubicación</p>
+    </div>
+
+    <div id="ui-top">
+        <input type="text" id="destination" placeholder="Escribe tu destino...">
+    </div>
+
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
+    <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
+        <a-camera gps-camera rotation-reader></a-camera>
+        <a-entity id="ar-route-container"></a-entity>
+    </a-scene>
+
+    <script>
+        let map, userMarker, destMarker, routeLine2D;
+        let userCoords = null;
+
+        async function iniciarSistema() {
+            // Solicitar permisos de sensores para Android/Redmi
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                await DeviceOrientationEvent.requestPermission();
+            }
+            document.getElementById('overlay').style.display = 'none';
+            initMap();
+            trackLocation();
+        }
+
+        function initMap() {
+            // Mapa estilo Google (Claro)
+            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
+            userMarker = L.circleMarker([0, 0], { color: '#1a73e8', fillColor: '#1a73e8', radius: 8, fillOpacity: 1 }).addTo(map);
+            destMarker = L.marker([0, 0]).addTo(map);
+        }
+
+        function trackLocation() {
+            navigator.geolocation.watchPosition((pos) => {
+                userCoords = [pos.coords.latitude, pos.coords.longitude];
+                userMarker.setLatLng(userCoords);
+                
+                // Si hay destino, ajustamos el zoom para ver ambos
+                if (destMarker.getLatLng().lat !== 0) {
+                    const bounds = L.latLngBounds([userCoords, destMarker.getLatLng()]);
+                    map.fitBounds(bounds, { padding: [30, 30] });
+                } else {
+                    map.setView(userCoords, 17);
+                }
+            }, null, { enableHighAccuracy: true });
+        }
+
+        document.getElementById('destination').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.target.blur();
+                const dLat = userCoords[0] + 0.003; // Simulamos destino a 300m
+                const dLng = userCoords[1] + 0.003;
+                activarRuta(dLat, dLng);
+            }
+        });
+
+        function activarRuta(lat, lng) {
+            destMarker.setLatLng([lat, lng]);
+            
+            // Dibujar línea en mapa 2D
+            if (routeLine2D) map.removeLayer(routeLine2D);
+            routeLine2D = L.polyline([userCoords, [lat, lng]], {color: '#1a73e8', weight: 5}).addTo(map);
+
+            // Generar Flechas Animadas en AR
+            const container = document.getElementById('ar-route-container');
+            container.innerHTML = '';
+
+            for (let i = 1; i <= 15; i++) {
+                const zPos = -i * 5;
+                const flecha = document.createElement('a-entity');
+                
+                flecha.setAttribute('position', `0 -1.6 ${zPos}`);
+                flecha.setAttribute('rotation', '-90 0 0');
+                flecha.setAttribute('geometry', { primitive: 'plane', width: 2, height: 3 });
+                flecha.setAttribute('material', {
+                    src: 'https://img.icons8.com/ios-filled/100/ffffff/up.png',
+                    color: '#00f2ff',
+                    transparent: true,
+                    opacity: 0.7,
+                    shader: 'flat',
+                    emissive: '#00f2ff',
+                    emissiveIntensity: 1
+                });
+
+                // --- ANIMACIÓN DE FLUJO ---
+                flecha.setAttribute('animation__move', {
+                    property: 'position',
+                    from: `0 -1.6 ${zPos}`,
+                    to: `0 -1.6 ${zPos + 5}`,
+                    dur: 1200,
+                    loop: true,
+                    easing: 'linear'
+                });
+
+                // --- ANIMACIÓN DE PULSACIÓN ---
+                flecha.setAttribute('animation__fade', {
+                    property: 'material.opacity',
+                    from: 0.2,
+                    to: 0.8,
+                    dur: 600,
+                    dir: 'alternate',
+                    loop: true,
+                    easing: 'easeInOutQuad'
+                });
+
+                container.appendChild(flecha);
+            }
+        }
+    </script>
+</body>
+</html>
