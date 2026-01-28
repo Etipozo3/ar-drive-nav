@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nav-AR: Detector de Carretera</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
+        
+        /* Interfaz de Usuario */
+        #ui {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px; z-index: 10; text-align: center;
+        }
+        input {
+            width: 100%; padding: 15px 25px; border-radius: 30px; border: 2px solid #00f2ff;
+            background: rgba(0, 0, 0, 0.7); color: white; font-size: 16px; outline: none;
+            backdrop-filter: blur(10px); pointer-events: auto;
+        }
+        #status-bar {
+            margin-top: 15px; padding: 8px 20px; border-radius: 20px;
+            background: rgba(0, 0, 0, 0.5); color: #00f2ff; font-size: 12px;
+            letter-spacing: 1px; display: inline-block; transition: 0.3s;
+        }
+        .road-detected { background: rgba(0, 242, 255, 0.3) !important; box-shadow: 0 0 15px #00f2ff; }
+    </style>
+</head>
+<body>
+
+    <video id="video" autoplay playsinline></video>
+    
+    <div id="ui">
+        <input type="text" id="destination" placeholder="Escribe tu destino y pulsa Enter...">
+        <div id="status-bar">ESPERANDO DESTINO</div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+        // --- 1. CONFIGURACIÓN ESCENA ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        let routeLine = null;
+        let isActive = false;
+
+        // Crear la "Línea Azul" (Ruta)
+        function generatePath() {
+            if (routeLine) scene.remove(routeLine);
+            
+            const points = [];
+            for (let i = 0; i <= 20; i++) {
+                points.push(new THREE.Vector3(
+                    Math.sin(i * 0.3) * (i * 0.1), // Curvatura sutil
+                    -4,                             // Altura de carretera
+                    -i * 2                          // Longitud
+                ));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(curve, 80, 0.15, 8, false);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x00f2ff, emissive: 0x0044ff, emissiveIntensity: 2,
+                transparent: true, opacity: 0 
+            });
+
+            routeLine = new THREE.Mesh(geometry, material);
+            scene.add(routeLine);
+            isActive = true;
+        }
+
+        const light = new THREE.PointLight(0xffffff, 50);
+        light.position.set(0, 5, 0);
+        scene.add(light, new THREE.AmbientLight(0xffffff, 0.5));
+
+        // --- 2. LÓGICA DE BÚSQUEDA ---
+        const input = document.getElementById('destination');
+        const statusBar = document.getElementById('status-bar');
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                input.blur();
+                statusBar.innerText = "BUSCANDO CARRETERA...";
+                generatePath();
+            }
+        });
+
+        // --- 3. SEGUIMIENTO FACIAL Y DETECCIÓN ---
+        let faceLandmarker;
+        const video = document.getElementById("video");
+
+        async function initAI() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task` },
+                runningMode: "VIDEO", numFaces: 1
+            });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.onloadeddata = () => animate();
+        }
+
+        function animate() {
+            const results = faceLandmarker.detectForVideo(video, performance.now());
+
+            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                const nose = results.faceLandmarks[0][1];
+                
+                // DETECCIÓN DE ENFOQUE A CARRETERA:
+                // Si la nariz está alta en la pantalla (significa que la cámara apunta abajo)
+                const isLookingDown = nose.y > 0.6; 
+
+                if (isActive && isLookingDown) {
+                    routeLine.material.opacity += (0.9 - routeLine.material.opacity) * 0.05;
+                    statusBar.innerText = "SIGUIENDO RUTA";
+                    statusBar.classList.add('road-detected');
+                } else if (isActive) {
+                    routeLine.material.opacity += (0 - routeLine.material.opacity) * 0.1;
+                    statusBar.innerText = "ENFOCA LA CARRETERA";
+                    statusBar.classList.remove('road-detected');
+                }
+
+                // Perspectiva dinámica
+                const tx = (0.5 - nose.x) * 5;
+                camera.position.x += (tx - camera.position.x) * 0.1;
+                camera.lookAt(0, -5, -15);
+            }
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        initAI();
+    </script>
+</body>
+</html>
