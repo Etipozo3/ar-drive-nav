@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Nav-AR Pro Final</title>
+    <title>Nav-AR Pro - Fix Vertical</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
@@ -11,38 +11,39 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
 
-        /* Buscador Superior */
+        /* BUSCADOR CORREGIDO PARA VERTICAL */
         #ui-top {
-            position: fixed; top: 20px; width: 100%; text-align: center; z-index: 10000;
+            position: fixed; top: 15px; left: 0; width: 100%;
+            display: flex; justify-content: center; z-index: 10000;
         }
-        input {
-            width: 80%; padding: 15px; border-radius: 30px; border: none;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 16px; outline: none;
+        #destination {
+            width: 85%; max-width: 400px; padding: 15px;
+            border-radius: 30px; border: 2px solid #00f2ff;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            font-size: 16px; outline: none; box-sizing: border-box;
         }
 
-        /* Contenedor Mapa 2D (Abajo Derecha - Estilo Google) */
+        /* MAPA REDIMENSIONADO */
         #map-container {
-            position: fixed; bottom: 20px; right: 20px;
-            width: 160px; height: 160px;
-            border-radius: 20px; border: 4px solid white;
+            position: fixed; bottom: 15px; right: 15px;
+            width: 140px; height: 140px;
+            border-radius: 15px; border: 3px solid white;
             box-shadow: 0 5px 15px rgba(0,0,0,0.4);
-            z-index: 9999; overflow: hidden; background: white;
+            z-index: 9999; overflow: hidden;
         }
         #map { width: 100%; height: 100%; }
 
-        /* Pantalla de Inicio / Permisos */
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #001a2c 0%, #000000 100%);
-            z-index: 11000; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; color: white;
+            background: #000; z-index: 11000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
         button {
-            padding: 18px 35px; background: #00f2ff; border: none; 
-            border-radius: 50px; font-weight: bold; font-size: 18px; cursor: pointer;
-            box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+            padding: 15px 30px; background: #00f2ff; border: none; border-radius: 50px;
+            font-weight: bold; font-size: 16px;
         }
     </style>
 </head>
@@ -50,13 +51,12 @@
 <body>
 
     <div id="overlay">
-        <h1>NAV-AR PRO</h1>
-        <button onclick="iniciarSistema()">INICIAR NAVEGACIÓN</button>
-        <p style="margin-top:20px; font-size:12px; opacity:0.6;">Acepta permisos de Cámara y Ubicación</p>
+        <h2 style="color: white;">CALIBRANDO GPS...</h2>
+        <button onclick="iniciarApp()">EMPEZAR</button>
     </div>
 
     <div id="ui-top">
-        <input type="text" id="destination" placeholder="Escribe tu destino...">
+        <input type="text" id="destination" placeholder="Escribe destino real (ej: Madrid)">
     </div>
 
     <div id="map-container">
@@ -72,55 +72,61 @@
         let map, userMarker, destMarker, routeLine2D;
         let userCoords = null;
 
-        async function iniciarSistema() {
-            // Solicitar permisos de sensores para Android/Redmi
+        async function iniciarApp() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
             }
             document.getElementById('overlay').style.display = 'none';
             initMap();
-            trackLocation();
+            obtenerUbicacion();
         }
 
         function initMap() {
-            // Mapa estilo Google (Claro)
             map = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            
-            userMarker = L.circleMarker([0, 0], { color: '#1a73e8', fillColor: '#1a73e8', radius: 8, fillOpacity: 1 }).addTo(map);
+            userMarker = L.circleMarker([0, 0], { color: '#1a73e8', radius: 7, fillOpacity: 1 }).addTo(map);
             destMarker = L.marker([0, 0]).addTo(map);
         }
 
-        function trackLocation() {
+        function obtenerUbicacion() {
             navigator.geolocation.watchPosition((pos) => {
                 userCoords = [pos.coords.latitude, pos.coords.longitude];
                 userMarker.setLatLng(userCoords);
-                
-                // Si hay destino, ajustamos el zoom para ver ambos
-                if (destMarker.getLatLng().lat !== 0) {
-                    const bounds = L.latLngBounds([userCoords, destMarker.getLatLng()]);
-                    map.fitBounds(bounds, { padding: [30, 30] });
-                } else {
-                    map.setView(userCoords, 17);
-                }
+                if (destMarker.getLatLng().lat === 0) map.setView(userCoords, 16);
+                actualizarMapa();
             }, null, { enableHighAccuracy: true });
         }
 
-        document.getElementById('destination').addEventListener('keypress', (e) => {
+        // BUSCADOR REAL (Nominatim API)
+        document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
+                const query = e.target.value;
                 e.target.blur();
-                const dLat = userCoords[0] + 0.003; // Simulamos destino a 300m
-                const dLng = userCoords[1] + 0.003;
-                activarRuta(dLat, dLng);
+                
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+                    const data = await response.json();
+                    
+                    if (data.length > 0) {
+                        const lat = parseFloat(data[0].lat);
+                        const lon = parseFloat(data[0].lon);
+                        activarNavegacion(lat, lon);
+                    } else {
+                        alert("No se encontró el lugar");
+                    }
+                } catch (error) {
+                    console.error("Error buscando:", error);
+                }
             }
         });
 
-        function activarRuta(lat, lng) {
-            destMarker.setLatLng([lat, lng]);
+        function activarNavegacion(dLat, dLon) {
+            destMarker.setLatLng([dLat, dLon]);
             
-            // Dibujar línea en mapa 2D
+            // Dibujar ruta en mapa 2D
             if (routeLine2D) map.removeLayer(routeLine2D);
-            routeLine2D = L.polyline([userCoords, [lat, lng]], {color: '#1a73e8', weight: 5}).addTo(map);
+            routeLine2D = L.polyline([userCoords, [dLat, dLon]], {color: '#1a73e8', weight: 4}).addTo(map);
+            actualizarMapa();
 
             // Generar Flechas Animadas en AR
             const container = document.getElementById('ar-route-container');
@@ -129,42 +135,33 @@
             for (let i = 1; i <= 15; i++) {
                 const zPos = -i * 5;
                 const flecha = document.createElement('a-entity');
-                
                 flecha.setAttribute('position', `0 -1.6 ${zPos}`);
                 flecha.setAttribute('rotation', '-90 0 0');
-                flecha.setAttribute('geometry', { primitive: 'plane', width: 2, height: 3 });
+                flecha.setAttribute('geometry', { primitive: 'plane', width: 2.2, height: 3.5 });
                 flecha.setAttribute('material', {
                     src: 'https://img.icons8.com/ios-filled/100/ffffff/up.png',
-                    color: '#00f2ff',
-                    transparent: true,
-                    opacity: 0.7,
-                    shader: 'flat',
-                    emissive: '#00f2ff',
-                    emissiveIntensity: 1
+                    color: '#00f2ff', transparent: true, opacity: 0.8,
+                    emissive: '#00f2ff', emissiveIntensity: 1
                 });
 
-                // --- ANIMACIÓN DE FLUJO ---
-                flecha.setAttribute('animation__move', {
+                // Animación de flujo mejorada
+                flecha.setAttribute('animation', {
                     property: 'position',
                     from: `0 -1.6 ${zPos}`,
                     to: `0 -1.6 ${zPos + 5}`,
-                    dur: 1200,
+                    dur: 1000,
                     loop: true,
                     easing: 'linear'
                 });
 
-                // --- ANIMACIÓN DE PULSACIÓN ---
-                flecha.setAttribute('animation__fade', {
-                    property: 'material.opacity',
-                    from: 0.2,
-                    to: 0.8,
-                    dur: 600,
-                    dir: 'alternate',
-                    loop: true,
-                    easing: 'easeInOutQuad'
-                });
-
                 container.appendChild(flecha);
+            }
+        }
+
+        function actualizarMapa() {
+            if (userCoords && destMarker.getLatLng().lat !== 0) {
+                const bounds = L.latLngBounds([userCoords, destMarker.getLatLng()]);
+                map.fitBounds(bounds, { padding: [20, 20] });
             }
         }
     </script>
