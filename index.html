@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nav-AR: Flechas Dinámicas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: -1; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 100; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        button { padding: 15px 30px; background: #00f2ff; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; }
+        #ui { position: fixed; top: 20px; width: 100%; text-align: center; display: none; z-index: 10; }
+        input { width: 70%; padding: 15px; border-radius: 30px; border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); color: white; outline: none; }
+        #radar {
+            position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px;
+            background: rgba(0,242,255,0.1); border: 2px solid #00f2ff; border-radius: 50%;
+            display: none; justify-content: center; align-items: center;
+        }
+        #pointer { width: 4px; height: 25px; background: #ff3333; border-radius: 2px; transform-origin: bottom center; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <button id="start-btn">INICIAR RUTA DINÁMICA</button>
+    </div>
+
+    <video id="video" autoplay playsinline></video>
+    
+    <div id="ui">
+        <input type="text" id="dest" placeholder="Escribe destino...">
+        <div id="radar"><div id="pointer"></div></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        let scene, camera, renderer, routeMesh, texture;
+        let alpha = 0;
+
+        document.getElementById('start-btn').onclick = async () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                await DeviceOrientationEvent.requestPermission();
+            }
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('radar').style.display = 'flex';
+            init();
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => { document.getElementById('video').srcObject = stream; });
+
+            window.addEventListener('deviceorientation', (e) => {
+                const a = THREE.MathUtils.degToRad(e.alpha || 0);
+                const b = THREE.MathUtils.degToRad(e.beta || 0);
+                const g = THREE.MathUtils.degToRad(e.gamma || 0);
+                camera.rotation.set(b, g, -a, 'YZX');
+                document.getElementById('pointer').style.transform = `rotate(${-e.alpha}deg)`;
+            });
+
+            // --- CARGAR TEXTURA DE FLECHAS ---
+            // Creamos una textura de flechas procedural usando un Canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#00f2ff';
+            ctx.beginPath();
+            ctx.moveTo(20, 20); ctx.lineTo(108, 64); ctx.lineTo(20, 108); ctx.lineTo(40, 64); ctx.fill();
+            
+            texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.repeat.set(10, 1); // Repite la flecha a lo largo de la línea
+
+            scene.add(new THREE.AmbientLight(0xffffff, 2));
+            animate();
+        }
+
+        document.getElementById('dest').onkeypress = (e) => {
+            if (e.key === 'Enter') { e.target.blur(); createAnimatedRoute(); }
+        };
+
+        function createAnimatedRoute() {
+            if (routeMesh) scene.remove(routeMesh);
+            
+            const points = [];
+            for (let i = 0; i < 40; i++) {
+                points.push(new THREE.Vector3(Math.sin(i * 0.3) * 3, -12, -i * 5));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(curve, 100, 0.4, 8, false);
+            const material = new THREE.MeshPhongMaterial({ 
+                map: texture, 
+                transparent: true, 
+                opacity: 0.9,
+                side: THREE.DoubleSide
+            });
+
+            routeMesh = new THREE.Mesh(geometry, material);
+            scene.add(routeMesh);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Animación de las flechas: Desplazamos la textura
+            if (texture) {
+                texture.offset.x -= 0.02; 
+            }
+            
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
