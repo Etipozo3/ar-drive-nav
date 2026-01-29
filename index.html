@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NAV-AR PRO - Edición Definitiva</title>
+    <title>Nav-AR Pro - Dynamic Flow</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
@@ -11,72 +11,24 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-
-        /* CAJA DE BÚSQUEDA CENTRADA (Arreglo Vertical/Horizontal) */
-        #ui-top { 
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 500px; display: flex; flex-direction: column; 
-            align-items: center; z-index: 10000; gap: 10px; 
-        }
-        #destination { 
-            width: 100%; padding: 15px; border-radius: 30px; border: 2px solid #00f2ff; 
-            background: rgba(255, 255, 255, 0.95); box-shadow: 0 4px 15px rgba(0,0,0,0.4); 
-            font-size: 16px; outline: none; box-sizing: border-box;
-        }
-
-        #mode-toggle { 
-            padding: 10px 20px; border-radius: 20px; border: none; 
-            background: #1a73e8; color: white; font-weight: bold; cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-        .modo-coche { background: #ea4335 !important; }
-
-        /* INDICADOR DE VOZ */
-        #voice-indicator {
-            position: fixed; top: 135px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); color: #00f2ff; padding: 10px 20px;
-            border-radius: 12px; font-size: 14px; font-weight: bold;
-            display: none; z-index: 10000; text-align: center; width: 80%; max-width: 400px;
-        }
-
-        /* MAPA VISTA PÁJARO */
-        #map-container { 
-            position: fixed; bottom: 20px; right: 20px; width: 140px; height: 140px; 
-            border-radius: 20px; border: 3px solid white; z-index: 9999; 
-            overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-        }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #ui-top { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 450px; z-index: 10000; display: flex; flex-direction: column; gap: 8px; }
+        #destination { width: 100%; padding: 14px; border-radius: 25px; border: 2px solid #1a73e8; background: white; font-size: 16px; box-sizing: border-box; }
+        
+        #map-container { position: fixed; bottom: 15px; right: 15px; width: 150px; height: 150px; border-radius: 20px; border: 3px solid white; z-index: 9999; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
         #map { width: 100%; height: 100%; }
 
-        /* OVERLAY INICIAL */
-        #overlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: radial-gradient(circle, #001a2c 0%, #000 100%); 
-            z-index: 11000; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; color: white;
-        }
-        #start-btn {
-            padding: 20px 40px; border-radius: 50px; border: none; 
-            background: #00f2ff; color: #000; font-weight: bold; 
-            font-size: 18px; cursor: pointer; box-shadow: 0 0 20px #00f2ff;
-        }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 11000; display: flex; align-items: center; justify-content: center; }
+        button#start-btn { padding: 15px 30px; border-radius: 30px; border: none; background: #1a73e8; color: white; font-weight: bold; }
     </style>
 </head>
 
 <body>
-
-    <div id="overlay">
-        <h1 style="margin-bottom: 30px; letter-spacing: 2px;">NAV-AR PRO</h1>
-        <button id="start-btn" onclick="iniciarApp()">INICIAR SISTEMA</button>
-        <p style="margin-top: 20px; font-size: 12px; opacity: 0.6;">Permite acceso a Cámara y GPS</p>
-    </div>
+    <div id="overlay"><button id="start-btn" onclick="iniciarApp()">INICIAR GPS</button></div>
 
     <div id="ui-top">
-        <input type="text" id="destination" placeholder="Escribe tu destino...">
-        <button id="mode-toggle" onclick="toggleMode()">MODO: PEATÓN 🚶</button>
+        <input type="text" id="destination" placeholder="¿A dónde vas?">
     </div>
-
-    <div id="voice-indicator"></div>
 
     <div id="map-container"><div id="map"></div></div>
 
@@ -86,48 +38,26 @@
     </a-scene>
 
     <script>
-        let isVehicleMode = false;
         let map, userMarker, destMarker, routeLine2D;
         let userCoords = null;
-        let lastInstruction = "";
-
-        function toggleMode() {
-            isVehicleMode = !isVehicleMode;
-            const btn = document.getElementById('mode-toggle');
-            btn.innerText = isVehicleMode ? "MODO: VEHÍCULO 🚗" : "MODO: PEATÓN 🚶";
-            btn.classList.toggle('modo-coche');
-            if(destMarker.getLatLng().lat !== 0) {
-                hablar("Cambiando a modo " + (isVehicleMode ? "conducción" : "peatón"));
-                obtenerRutaReal(destMarker.getLatLng().lat, destMarker.getLatLng().lng);
-            }
-        }
-
-        function hablar(texto) {
-            if (lastInstruction === texto) return;
-            lastInstruction = texto;
-            const msg = new SpeechSynthesisUtterance(texto);
-            msg.lang = 'es-ES';
-            window.speechSynthesis.speak(msg);
-            
-            const indicator = document.getElementById('voice-indicator');
-            indicator.innerText = texto.toUpperCase();
-            indicator.style.display = 'block';
-            setTimeout(() => indicator.style.display = 'none', 5000);
-        }
+        let routeActive = false;
 
         async function iniciarApp() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                await DeviceOrientationEvent.requestPermission();
-            }
             document.getElementById('overlay').style.display = 'none';
             initMap();
-            hablar("Sistema listo. Introduzca destino.");
             
             navigator.geolocation.watchPosition(pos => {
                 userCoords = [pos.coords.latitude, pos.coords.longitude];
                 userMarker.setLatLng(userCoords);
-                if (destMarker.getLatLng().lat === 0) map.setView(userCoords, 17);
-                actualizarVistaMapa();
+                
+                // ZOOM DINÁMICO: Si ya hay ruta, mantenemos un zoom de "calle" (18), 
+                // pero si acabamos de empezar o no hay ruta, dejamos que fitBounds decida.
+                if (!routeActive) {
+                    map.setView(userCoords, 16);
+                } else {
+                    // Si estamos cerca de un giro o moviéndonos, centramos suavemente
+                    map.panTo(userCoords);
+                }
             }, null, { enableHighAccuracy: true });
         }
 
@@ -135,13 +65,11 @@
             map = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
-            // Icono Salida
-            userMarker = L.circleMarker([0, 0], { color: '#1a73e8', fillColor: '#1a73e8', radius: 9, fillOpacity: 1 }).addTo(map);
+            userMarker = L.circleMarker([0, 0], { color: '#1a73e8', radius: 8, fillOpacity: 1 }).addTo(map);
             
-            // Icono Llegada (Bandera)
             const llegadaIcon = L.icon({
                 iconUrl: 'https://cdn-icons-png.flaticon.com/512/1476/1476735.png',
-                iconSize: [35, 35], iconAnchor: [17, 35]
+                iconSize: [30, 30], iconAnchor: [15, 30]
             });
             destMarker = L.marker([0, 0], {icon: llegadaIcon}).addTo(map);
         }
@@ -149,7 +77,6 @@
         document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
                 const query = e.target.value;
-                e.target.blur();
                 const geoResp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
                 const geoData = await geoResp.json();
                 
@@ -157,68 +84,76 @@
                     const dLat = geoData[0].lat;
                     const dLon = geoData[0].lon;
                     destMarker.setLatLng([dLat, dLon]);
-                    hablar("Calculando ruta a " + query);
-                    obtenerRutaReal(dLat, dLon);
-                } else {
-                    hablar("No se ha encontrado el destino.");
+                    obtenerRuta(dLat, dLon);
                 }
             }
         });
 
-        async function obtenerRutaReal(dLat, dLon) {
-            const mode = isVehicleMode ? 'driving' : 'walking';
-            const url = `https://router.project-osrm.org/route/v1/${mode}/${userCoords[1]},${userCoords[0]};${dLon},${dLat}?geometries=geojson&steps=true`;
-            
+        async function obtenerRuta(dLat, dLon) {
+            const url = `https://router.project-osrm.org/route/v1/driving/${userCoords[1]},${userCoords[0]};${dLon},${dLat}?geometries=geojson&overview=full`;
             const resp = await fetch(url);
             const data = await resp.json();
             
             if (data.routes.length > 0) {
                 const coordinates = data.routes[0].geometry.coordinates;
-                const instruction = data.routes[0].legs[0].steps[0].maneuver.instruction;
+                routeActive = true;
 
-                // Mapa 2D
+                // 1. MAPA: Primero alejamos para ver Salida y Llegada
                 if (routeLine2D) map.removeLayer(routeLine2D);
                 routeLine2D = L.geoJSON(data.routes[0].geometry, {style: {color: '#1a73e8', weight: 6}}).addTo(map);
-                actualizarVistaMapa();
+                
+                map.fitBounds(routeLine2D.getBounds(), { padding: [40, 40] });
 
-                // AR
-                pintarCaminoAR(coordinates);
-                setTimeout(() => hablar(instruction), 1500);
+                // Después de 4 segundos, hacemos zoom a la posición del usuario para ver las calles
+                setTimeout(() => {
+                    map.setZoom(18, { animate: true });
+                }, 4000);
+
+                // 2. AR: Pintar el flujo de flechas
+                pintarFlujoFlechas(coordinates);
             }
         }
 
-        function pintarCaminoAR(points) {
+        function pintarFlujoFlechas(points) {
             const container = document.getElementById('ar-route-container');
             container.innerHTML = '';
-            
-            // Pintamos los primeros 25 nodos de la carretera
-            points.slice(0, 25).forEach((pt, index) => {
+
+            // Tomamos los puntos del camino y creamos flechas entre ellos
+            // Limitamos a los puntos más cercanos para no saturar
+            const puntosCercanos = points.slice(0, 30); 
+
+            puntosCercanos.forEach((pt, index) => {
+                // Creamos una entidad por cada punto de la carretera
                 const el = document.createElement('a-entity');
+                
+                // Posición GPS real del nodo de la carretera
                 el.setAttribute('gps-projected-entity-place', `latitude: ${pt[1]}; longitude: ${pt[0]};`);
                 
-                // Ajuste de altura: más bajo para coche (vista salpicadero)
-                const yPos = isVehicleMode ? -2.5 : -1.6;
-                el.setAttribute('position', `0 ${yPos} 0`);
+                // Ajustamos para que esté en el suelo
+                el.setAttribute('position', `0 -2.5 0`); 
                 el.setAttribute('rotation', '-90 0 0');
-                el.setAttribute('geometry', { 
-                    primitive: 'plane', 
-                    width: isVehicleMode ? 6 : 2.5, 
-                    height: 4 
-                });
+                el.setAttribute('geometry', { primitive: 'plane', width: 3, height: 4 });
+                
                 el.setAttribute('material', {
                     src: 'https://img.icons8.com/ios-filled/100/ffffff/up.png',
-                    color: isVehicleMode ? '#FFD700' : '#00f2ff',
-                    transparent: true, opacity: 0.8
+                    color: '#00f2ff',
+                    transparent: true,
+                    opacity: 0.8
                 });
+
+                // ANIMACIÓN: Flujo constante hacia adelante
+                el.setAttribute('animation', {
+                    property: 'scale',
+                    from: '0.8 0.8 0.8',
+                    to: '1.1 1.1 1.1',
+                    dur: 1000,
+                    dir: 'alternate',
+                    loop: true,
+                    easing: 'easeInOutQuad'
+                });
+
                 container.appendChild(el);
             });
-        }
-
-        function actualizarVistaMapa() {
-            if (userCoords && destMarker.getLatLng().lat !== 0) {
-                const bounds = L.latLngBounds([userCoords, destMarker.getLatLng()]);
-                map.fitBounds(bounds, { padding: [30, 30] });
-            }
         }
     </script>
 </body>
