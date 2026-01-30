@@ -2,110 +2,117 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Nav-AR 360: Neon Horizon</title>
+    <title>Nav-AR 360: Calibración Manual</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        #ui { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); width: 85%; z-index: 100; }
-        #destination { 
-            width: 100%; padding: 15px; border-radius: 30px; border: 2px solid #00f2ff; 
-            background: rgba(0,0,0,0.6); color: white; font-size: 18px; outline: none;
-            box-shadow: 0 0 15px #00f2ff;
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        
+        /* Panel de Control */
+        #controls {
+            position: fixed; bottom: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.8); color: #00f2ff;
+            padding: 15px; border-radius: 15px; z-index: 1000;
+            display: flex; flex-direction: column; gap: 10px;
+            border: 1px solid #00f2ff;
         }
-        .hint { 
-            position: fixed; bottom: 30px; width: 100%; text-align: center; 
-            color: #00f2ff; font-weight: bold; letter-spacing: 1px; z-index: 100;
-            text-shadow: 0 0 8px #000;
+        .control-group { display: flex; gap: 5px; align-items: center; }
+        button { 
+            background: #00f2ff; border: none; padding: 8px 12px; 
+            border-radius: 5px; font-weight: bold; cursor: pointer;
         }
+        #ui-top { position: fixed; top: 20px; width: 100%; text-align: center; z-index: 1000; }
+        #destination { padding: 10px; border-radius: 20px; width: 70%; border: 2px solid #00f2ff; background: black; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <input type="text" id="destination" placeholder="Introduce destino y mira hacia abajo...">
+    <div id="ui-top">
+        <input type="text" id="destination" placeholder="Destino...">
     </div>
 
-    <div class="hint">MIRA HACIA ABAJO PARA EL MAPA HOLOGRÁFICO</div>
+    <div id="controls">
+        <div style="font-size: 12px; margin-bottom: 5px;">CALIBRACIÓN MANUAL</div>
+        <div class="control-group">
+            <span>Posición:</span>
+            <button onclick="mover('z', -0.5)">↑</button>
+            <button onclick="mover('z', 0.5)">↓</button>
+            <button onclick="mover('x', -0.5)">←</button>
+            <button onclick="mover('x', 0.5)">→</button>
+        </div>
+        <div class="control-group">
+            <span>Rotación:</span>
+            <button onclick="rotar(-5)">↺</button>
+            <button onclick="rotar(5)">↻</button>
+        </div>
+        <div class="control-group">
+            <span>Altura:</span>
+            <button onclick="mover('y', 0.5)">H+</button>
+            <button onclick="mover('y', -0.5)">H-</button>
+        </div>
+    </div>
 
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
-        
-        <a-camera gps-projected-camera rotation-reader></a-camera>
+        <a-camera rotation-reader></a-camera>
 
-        <a-plane id="ground-map" 
-                 position="0 -3 -5" 
-                 rotation="-90 0 0" 
-                 width="15" height="15" 
-                 material="src: #map-img; transparent: true; opacity: 0.8; shader: flat;">
-        </a-plane>
-
-        <a-entity id="neon-path" position="0 -2.9 -5" rotation="-90 0 0"></a-entity>
-
-        <a-light type="ambient" color="#00f2ff" intensity="0.5"></a-light>
+        <a-entity id="map-parent" position="0 -3 -10">
+            <a-plane id="ground-map" 
+                     rotation="-90 0 0" 
+                     width="30" height="30" 
+                     material="src: #map-img; transparent: true; opacity: 0.7; shader: flat;">
+            </a-plane>
+            <a-entity id="neon-path"></a-entity>
+        </a-entity>
     </a-scene>
 
     <script>
         let userCoords = null;
+        const mapParent = document.getElementById('map-parent');
         const groundMap = document.getElementById('ground-map');
 
-        // 1. Iniciamos GPS y cargamos el mapa base
-        navigator.geolocation.watchPosition(pos => {
-            userCoords = [pos.coords.latitude, pos.coords.longitude];
-            actualizarMapaHolografico();
-        }, null, {enableHighAccuracy: true});
-
-        function actualizarMapaHolografico() {
-            if (!userCoords) return;
-            // Usamos una API de mapas estáticos (Stamen o similar) centrada en el usuario
-            const zoom = 17;
-            const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${userCoords[1]},${userCoords[0]}&z=${zoom}&l=map&size=450,450&theme=dark`;
-            groundMap.setAttribute('material', 'src', mapUrl);
+        // Funciones de Calibración
+        function mover(eje, valor) {
+            let pos = mapParent.getAttribute('position');
+            pos[eje] += valor;
+            mapParent.setAttribute('position', pos);
         }
 
-        // 2. Al buscar destino, dibujamos la línea neón "Bloom"
+        function rotar(valor) {
+            let rot = mapParent.getAttribute('rotation');
+            rot.y += valor;
+            mapParent.setAttribute('rotation', rot);
+        }
+
+        // GPS y Mapas
+        navigator.geolocation.watchPosition(pos => {
+            userCoords = [pos.coords.latitude, pos.coords.longitude];
+            const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${userCoords[1]},${userCoords[0]}&z=17&l=map&size=600,600&theme=dark`;
+            groundMap.setAttribute('material', 'src', mapUrl);
+        }, null, {enableHighAccuracy: true});
+
         document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
-                const query = e.target.value;
-                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e.target.value}`);
                 const data = await resp.json();
-                
-                if (data.length > 0) {
-                    const dLat = data[0].lat;
-                    const dLon = data[0].lon;
-                    dibujarRutaNeon(dLat, dLon);
-                }
+                if (data.length > 0) dibujarRuta(data[0].lat, data[0].lon);
             }
         });
 
-        async function dibujarRutaNeon(dLat, dLon) {
-            const pathContainer = document.getElementById('neon-path');
-            pathContainer.innerHTML = ''; // Limpiar ruta anterior
-
+        async function dibujarRuta(dLat, dLon) {
+            const container = document.getElementById('neon-path');
+            container.innerHTML = '';
             const url = `https://router.project-osrm.org/route/v1/driving/${userCoords[1]},${userCoords[0]};${dLon},${dLat}?geometries=geojson&overview=full`;
             const res = await fetch(url);
             const routeData = await res.json();
 
             if (routeData.routes.length > 0) {
-                // Dibujamos la línea de neón simplificada
-                // En este modo, la línea se proyecta sobre el mapa 2D en el suelo
-                const line = document.createElement('a-entity');
-                line.setAttribute('line', {
-                    start: '0 0 0',
-                    end: '0 5 0', // Esto se escala según la dirección
-                    color: '#00f2ff',
-                    opacity: 1
-                });
-                
-                // Agregamos un brillo extra usando un cilindro fino y brillante
-                const glow = document.createElement('a-cylinder');
-                glow.setAttribute('height', '10');
-                glow.setAttribute('radius', '0.05');
-                glow.setAttribute('color', '#00f2ff');
-                glow.setAttribute('position', '0 0 0');
-                glow.setAttribute('rotation', '0 0 90');
-                glow.setAttribute('material', 'emissive: #00f2ff; emissiveIntensity: 2');
-                
-                pathContainer.appendChild(glow);
+                // Creamos un cilindro neón largo para simular la ruta sobre el mapa
+                const path = document.createElement('a-cylinder');
+                path.setAttribute('height', '40');
+                path.setAttribute('radius', '0.2');
+                path.setAttribute('rotation', '90 0 0');
+                path.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 2');
+                container.appendChild(path);
             }
         }
     </script>
