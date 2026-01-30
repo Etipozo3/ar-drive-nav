@@ -2,35 +2,26 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Three.js AR Background</title>
+    <title>Three.js GPS + Head Tracking</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        /* El video ahora ocupa toda la pantalla de fondo */
-        #video {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            object-fit: cover; /* Mantiene la proporción sin deformar */
-            transform: scaleX(-1); /* Efecto espejo */
-            z-index: -1; /* Lo envía al fondo */
-        }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
+        #info { position: absolute; top: 20px; left: 20px; color: #00ff88; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #00ff88; }
         canvas { display: block; }
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-family: sans-serif;
-        }
     </style>
 </head>
 <body>
 
-    <div id="loading">Iniciando Realidad Aumentada...</div>
+    <div id="info">
+        <b>SISTEMA DE NAVEGACIÓN AR</b><br>
+        <span id="coords">Obteniendo ubicación...</span><br>
+        <span id="dest">Destino: Norte Magnético</span>
+    </div>
     <video id="video" autoplay playsinline></video>
 
     <script type="importmap">
         {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-            }
+            "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" }
         }
     </script>
 
@@ -41,58 +32,58 @@
         // --- 1. CONFIGURACIÓN DE THREE.JS ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        
-        // IMPORTANTE: alpha: true para transparencia
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x000000, 0); // Fondo 100% transparente
         document.body.appendChild(renderer.domElement);
 
-        // Añadir una rejilla en el suelo (opcional, para referencia)
-        const grid = new THREE.GridHelper(20, 20, 0x00ff88, 0x00ff88);
-        grid.position.y = -2;
-        grid.material.opacity = 0.5;
-        grid.material.transparent = true;
-        scene.add(grid);
+        // Crear una Flecha de Navegación (GPS Pointer)
+        const arrowGroup = new THREE.Group();
+        const coneGeo = new THREE.ConeGeometry(0.5, 1.5, 32);
+        const coneMat = new THREE.MeshPhongMaterial({ color: 0x00ff88, emissive: 0x004422 });
+        const arrow = new THREE.Mesh(coneGeo, coneMat);
+        arrow.rotation.x = Math.PI / 2; // Apuntar hacia adelante
+        arrowGroup.add(arrow);
+        scene.add(arrowGroup);
 
-        // Añadir varios cubos de colores flotando
-        for (let i = 0; i < 15; i++) {
-            const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-            const mat = new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff });
-            const cube = new THREE.Mesh(geo, mat);
-            cube.position.set((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*5);
-            scene.add(cube);
-        }
-
-        const light = new THREE.DirectionalLight(0xffffff, 3);
-        light.position.set(1, 1, 2);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const light = new THREE.PointLight(0xffffff, 10);
+        light.position.set(0, 5, 5);
+        scene.add(light, new THREE.AmbientLight(0xffffff, 0.5));
 
         camera.position.z = 5;
 
-        // --- 2. CONFIGURACIÓN DE IA ---
+        // --- 2. LÓGICA GPS ---
+        function updateGPS() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition((position) => {
+                    const { latitude, longitude } = position.coords;
+                    document.getElementById('coords').innerText = `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
+                    
+                    // Aquí podrías calcular el ángulo hacia un destino real. 
+                    // Por ahora, haremos que la flecha rote suavemente.
+                });
+            } else {
+                document.getElementById('coords').innerText = "GPS no disponible";
+            }
+        }
+
+        // --- 3. LÓGICA DE IA (HEAD TRACKING) ---
         let faceLandmarker;
         const video = document.getElementById("video");
-        const loadingDiv = document.getElementById("loading");
 
         async function init() {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task` },
-                runningMode: "VIDEO",
-                numFaces: 1
+                runningMode: "VIDEO", numFaces: 1
             });
             startCamera();
+            updateGPS();
         }
 
         async function startCamera() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             video.srcObject = stream;
-            video.onloadeddata = () => {
-                loadingDiv.style.display = "none";
-                animate();
-            };
+            video.onloadeddata = () => animate();
         }
 
         function animate() {
@@ -101,24 +92,24 @@
             if (results.faceLandmarks && results.faceLandmarks.length > 0) {
                 const nose = results.faceLandmarks[0][1];
                 
-                // Mover la cámara según tu cabeza
-                const targetX = (0.5 - nose.x) * 8;
-                const targetY = (0.5 - nose.y) * 5;
-
+                // Mover la cámara (Parallax)
+                const targetX = (0.5 - nose.x) * 6;
+                const targetY = (0.5 - nose.y) * 4;
                 camera.position.x += (targetX - camera.position.x) * 0.1;
                 camera.position.y += (targetY - camera.position.y) * 0.1;
                 camera.lookAt(0, 0, 0);
+
+                // La flecha flota frente a ti pero con un ligero retraso
+                arrowGroup.position.x = camera.position.x * 0.5;
+                arrowGroup.position.y = camera.position.y * 0.5;
             }
+
+            // Animación constante de la flecha
+            arrowGroup.rotation.z += 0.01; 
 
             renderer.render(scene, camera);
             requestAnimationFrame(animate);
         }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
 
         init();
     </script>
