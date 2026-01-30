@@ -2,29 +2,30 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Road Detection AR Navigation</title>
+    <title>Nav-AR Pro: Fixed Camera & Road</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
-        #video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); z-index: -1; }
-        
-        #hud {
-            position: absolute; top: 20px; width: 100%; display: flex; flex-direction: column; align-items: center;
-            pointer-events: none;
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: -1; }
+        #ui {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px; z-index: 10; text-align: center;
         }
-        #status-pill {
-            background: rgba(0, 0, 0, 0.7); color: #00f2ff; padding: 10px 20px;
-            border-radius: 20px; border: 1px solid #00f2ff; font-size: 12px;
-            text-transform: uppercase; letter-spacing: 2px; transition: all 0.3s;
+        input {
+            width: 100%; padding: 15px; border-radius: 25px; border: 2px solid #00f2ff;
+            background: rgba(0,0,0,0.8); color: white; outline: none;
         }
-        .active { box-shadow: 0 0 15px #00f2ff; background: rgba(0, 242, 255, 0.2) !important; }
+        #status {
+            margin-top: 10px; color: #00f2ff; font-size: 12px; font-weight: bold;
+            background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 10px;
+        }
     </style>
 </head>
 <body>
 
     <video id="video" autoplay playsinline></video>
-    
-    <div id="hud">
-        <div id="status-pill">Escaneando Carretera...</div>
+    <div id="ui">
+        <input type="text" id="dest" placeholder="Destino...">
+        <div id="status">BUSCANDO CARRETERA</div>
     </div>
 
     <script type="importmap">
@@ -42,27 +43,26 @@
         document.body.appendChild(renderer.domElement);
 
         let routeLine = null;
-        const statusPill = document.getElementById('status-pill');
+        let isNavigating = false;
 
-        // --- CREACIÓN DE LA RUTA ---
-        function createRoadRoute() {
+        function createRoute() {
+            if (routeLine) scene.remove(routeLine);
             const points = [];
-            for (let i = 0; i <= 15; i++) {
-                points.push(new THREE.Vector3(Math.sin(i * 0.4) * 1.5, -4, -i * 3));
-            }
+            for (let i = 0; i <= 20; i++) points.push(new THREE.Vector3(Math.sin(i*0.3)*i*0.1, -4, -i*2.5));
             const curve = new THREE.CatmullRomCurve3(points);
             const geometry = new THREE.TubeGeometry(curve, 64, 0.15, 8, false);
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0x00f2ff, emissive: 0x0044ff, transparent: true, opacity: 0 
-            });
+            const material = new THREE.MeshPhongMaterial({ color: 0x00f2ff, emissive: 0x0044ff, transparent: true, opacity: 0 });
             routeLine = new THREE.Mesh(geometry, material);
             scene.add(routeLine);
+            isNavigating = true;
         }
 
         scene.add(new THREE.AmbientLight(0xffffff, 1));
-        camera.position.set(0, 0, 0);
+        camera.position.z = 2;
 
-        // --- DETECCIÓN Y ANIMACIÓN ---
+        const input = document.getElementById('dest');
+        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') { input.blur(); createRoute(); } });
+
         let faceLandmarker;
         const video = document.getElementById("video");
 
@@ -72,10 +72,22 @@
                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task` },
                 runningMode: "VIDEO", numFaces: 1
             });
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-            createRoadRoute();
-            animate();
+
+            // --- CORRECCIÓN 1: CAMARA TRASERA ---
+            const constraints = { 
+                video: { facingMode: { exact: "environment" } } // Forza la cámara de atrás
+            };
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+            } catch (err) {
+                // Si falla (ej. en PC sin cam trasera), intenta la normal
+                const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = fallback;
+            }
+            
+            video.onloadeddata = () => animate();
         }
 
         function animate() {
@@ -84,24 +96,24 @@
             if (results.faceLandmarks && results.faceLandmarks.length > 0) {
                 const nose = results.faceLandmarks[0][1];
                 
-                // LÓGICA DE ACTIVACIÓN:
-                // Si la nariz está en la mitad inferior (nose.y > 0.6), asumimos que miras la carretera
-                const lookingAtRoad = nose.y > 0.55;
+                // --- CORRECCIÓN 2: LÓGICA DE DETECCIÓN MEJORADA ---
+                // Para que solo salga cuando mires al suelo, el valor de nose.y debe ser alto.
+                // Ajustamos el umbral a 0.7 (más estricto que el 0.6 anterior)
+                const isLookingAtRoad = nose.y > 0.7; 
 
-                if (lookingAtRoad) {
-                    routeLine.material.opacity += (0.8 - routeLine.material.opacity) * 0.1;
-                    statusPill.innerText = "Carretera Detectada - Siguiendo Ruta";
-                    statusPill.classList.add('active');
-                } else {
-                    routeLine.material.opacity += (0 - routeLine.material.opacity) * 0.1;
-                    statusPill.innerText = "Enfoca hacia abajo para ver la ruta";
-                    statusPill.classList.remove('active');
+                if (isNavigating) {
+                    if (isLookingAtRoad) {
+                        routeLine.material.opacity += (0.8 - routeLine.material.opacity) * 0.1;
+                        document.getElementById('status').innerText = "CARRETERA DETECTADA";
+                    } else {
+                        routeLine.material.opacity += (0 - routeLine.material.opacity) * 0.1;
+                        document.getElementById('status').innerText = "ENFOCA EL SUELO";
+                    }
                 }
 
-                // Ajuste de perspectiva
-                const tx = (0.5 - nose.x) * 5;
-                camera.position.x += (tx - camera.position.x) * 0.1;
-                camera.lookAt(0, -5, -15);
+                // Ajuste de vista
+                camera.position.x += ((0.5 - nose.x) * 4 - camera.position.x) * 0.1;
+                camera.lookAt(0, -6, -20);
             }
 
             renderer.render(scene, camera);
