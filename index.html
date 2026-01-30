@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Nav-AR: Curvas Reales</title>
+    <title>Nav-AR: Control Total</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -10,44 +10,64 @@
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; }
-        #search-container { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); width: 85%; z-index: 2000; }
-        #destination { width: 100%; padding: 12px; border-radius: 25px; border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); color: white; outline: none; }
-        #minimap-container { position: fixed; bottom: 20px; right: 15px; width: 100px; height: 100px; border-radius: 50%; border: 2px solid #00f2ff; overflow: hidden; z-index: 2000; }
-        #map { width: 100%; height: 100%; }
-        #gui { position: fixed; top: 80px; left: 10px; background: rgba(0, 15, 25, 0.9); color: #00f2ff; padding: 10px; border-radius: 12px; z-index: 1500; width: 180px; border: 1px solid #00f2ff; font-size: 11px; }
+        #search-container { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; z-index: 2000; }
+        #destination { width: 100%; padding: 12px; border-radius: 20px; border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); color: white; outline: none; }
+        
+        /* GUI AJUSTADA PARA REDMI */
+        #gui { 
+            position: fixed; top: 70px; left: 10px; 
+            background: rgba(0, 15, 25, 0.9); color: #00f2ff; 
+            padding: 10px; border-radius: 12px; z-index: 1500; 
+            width: 210px; border: 1px solid #00f2ff; font-size: 10px;
+        }
         .control-block { margin-bottom: 8px; }
-        input[type=range] { width: 100%; accent-color: #00f2ff; }
-        .val-display { float: right; color: white; }
+        input[type=range] { width: 100%; accent-color: #00f2ff; margin: 4px 0; }
+        .val-display { float: right; color: white; font-weight: bold; }
+        
+        #minimap-container { position: fixed; bottom: 20px; right: 15px; width: 90px; height: 90px; border-radius: 50%; border: 2px solid #00f2ff; overflow: hidden; z-index: 2000; }
+        #map { width: 100%; height: 100%; }
     </style>
 </head>
 <body>
 
-    <div id="search-container"><input type="text" id="destination" placeholder="Busca destino para ver las curvas..."></div>
+    <div id="search-container"><input type="text" id="destination" placeholder="Escribe destino..."></div>
     <div id="minimap-container"><div id="map"></div></div>
 
     <div id="gui">
-        <div style="text-align:center; margin-bottom:5px; font-weight:bold;">AJUSTE DE CURVAS</div>
+        <div style="text-align:center; font-weight:bold; margin-bottom:5px;">CALIBRACIÓN DE POSICIÓN</div>
+        
         <div class="control-block">
-            <label>VER DISTANCIA <span id="d-val" class="val-display">500</span>m</label>
-            <input type="range" id="input-d" min="100" max="2000" step="50" value="500">
+            <label>LATERAL (X) <span id="x-val" class="val-display">0</span></label>
+            <input type="range" id="input-x" min="-15" max="15" step="0.2" value="0">
         </div>
+
         <div class="control-block">
-            <label>ESCALA ANCHO <span id="s-val" class="val-display">2.0</span></label>
+            <label>ROTACIÓN <span id="r-val" class="val-display">0</span></label>
+            <input type="range" id="input-r" min="-180" max="180" step="1" value="0">
+        </div>
+
+        <div class="control-block">
+            <label>DISTANCIA (Z) <span id="z-val" class="val-display">-20</span></label>
+            <input type="range" id="input-z" min="-100" max="-5" step="1" value="-20">
+        </div>
+
+        <div class="control-block">
+            <label>ESCALA <span id="s-val" class="val-display">2.0</span></label>
             <input type="range" id="input-s" min="0.5" max="10" step="0.1" value="2.0">
         </div>
+
         <div class="control-block">
-            <label>PROFUNDIDAD (Z) <span id="z-val" class="val-display">-20</span></label>
-            <input type="range" id="input-z" min="-100" max="-5" step="1" value="-20">
+            <label>ALTURA (Y) <span id="y-val" class="val-display">-4</span></label>
+            <input type="range" id="input-y" min="-15" max="0" step="0.2" value="-4">
         </div>
     </div>
 
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
         <a-camera rotation-reader></a-camera>
 
-        <a-entity id="map-rig" position="0 -4 -20" scale="2 2 2">
-            <a-plane id="ground-map" rotation="-90 0 0" width="100" height="100" 
+        <a-entity id="map-rig" position="0 -4 -20" rotation="0 0 0" scale="2 2 2">
+            <a-plane id="ground-map" rotation="-90 0 0" width="120" height="120" 
                      material="transparent: true; opacity: 0.4; shader: flat;"></a-plane>
-            
             <a-entity id="neon-path"></a-entity>
         </a-entity>
     </a-scene>
@@ -59,22 +79,32 @@
         let userCoords = null;
         let leafletMap, userMarker, routeLine2D;
 
-        // Minimapa
+        // Leaflet
         leafletMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
         userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 4 }).addTo(leafletMap);
 
-        // GUI
-        const inputs = { d: document.getElementById('input-d'), s: document.getElementById('input-s'), z: document.getElementById('input-z') };
+        // GUI CONTROLS
+        const inputs = {
+            x: document.getElementById('input-x'),
+            y: document.getElementById('input-y'),
+            z: document.getElementById('input-z'),
+            r: document.getElementById('input-r'),
+            s: document.getElementById('input-s')
+        };
+
         function update() {
-            rig.setAttribute('position', `0 -4 ${inputs.z.value}`);
+            rig.setAttribute('position', `${inputs.x.value} ${inputs.y.value} ${inputs.z.value}`);
+            rig.setAttribute('rotation', `0 ${inputs.r.value} 0`);
             rig.setAttribute('scale', `${inputs.s.value} ${inputs.s.value} ${inputs.s.value}`);
-            document.getElementById('d-val').innerText = inputs.d.value;
-            document.getElementById('s-val').innerText = inputs.s.value;
-            document.getElementById('z-val').innerText = inputs.z.value;
+            
+            Object.keys(inputs).forEach(k => {
+                document.getElementById(k + '-val').innerText = inputs[k].value;
+            });
         }
         Object.values(inputs).forEach(i => i.addEventListener('input', update));
 
+        // GPS
         navigator.geolocation.watchPosition(pos => {
             userCoords = [pos.coords.latitude, pos.coords.longitude];
             userMarker.setLatLng(userCoords);
@@ -85,54 +115,42 @@
 
         document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
-                const query = e.target.value;
-                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e.target.value}`);
                 const data = await resp.json();
-                if (data.length > 0) dibujarRutaConGiros(data[0].lat, data[0].lon);
+                if (data.length > 0) dibujarRuta(data[0].lat, data[0].lon);
             }
         });
 
-        async function dibujarRutaConGiros(dLat, dLon) {
+        async function dibujarRuta(dLat, dLon) {
             pathContainer.innerHTML = '';
             const url = `https://router.project-osrm.org/route/v1/driving/${userCoords[1]},${userCoords[0]};${dLon},${dLat}?geometries=geojson&overview=full`;
             const res = await fetch(url);
             const routeData = await res.json();
 
             if (routeData.routes.length > 0) {
-                // Actualizar minimapa
                 if (routeLine2D) leafletMap.removeLayer(routeLine2D);
                 routeLine2D = L.geoJSON(routeData.routes[0].geometry, {style: {color: '#00f2ff', weight: 4}}).addTo(leafletMap);
                 
-                // DIBUJAR RUTA 3D PUNTO POR PUNTO
                 const coords = routeData.routes[0].geometry.coordinates;
-                const distMax = parseInt(inputs.d.value) / 100; // Ajuste de escala visual
-
-                for (let i = 0; i < coords.length - 1 && i < 20; i++) {
-                    const segment = document.createElement('a-entity');
-                    
-                    // Cálculo de posición relativa (conversión simple grados a metros visuales)
+                // Dibujamos los primeros 30 segmentos para ver curvas con detalle
+                for (let i = 0; i < coords.length - 1 && i < 30; i++) {
                     let x1 = (coords[i][0] - userCoords[1]) * 15000;
                     let z1 = (coords[i][1] - userCoords[0]) * -15000;
                     let x2 = (coords[i+1][0] - userCoords[1]) * 15000;
                     let z2 = (coords[i+1][1] - userCoords[0]) * -15000;
 
-                    // Dibujamos cada tramo de la calle como un cilindro conectado
-                    // Esto permite ver exactamente dónde gira la calle
-                    segment.setAttribute('line', {
-                        start: `${x1} 0.1 ${z1}`,
-                        end: `${x2} 0.1 ${z2}`,
-                        color: '#00f2ff'
-                    });
+                    const segment = document.createElement('a-cylinder');
+                    const dx = x2 - x1;
+                    const dz = z2 - z1;
+                    const distance = Math.sqrt(dx*dx + dz*dz);
                     
-                    // Añadimos un pequeño brillo en cada tramo
-                    const glow = document.createElement('a-cylinder');
-                    glow.setAttribute('position', `${(x1+x2)/2} 0.1 ${(z1+z2)/2}`);
-                    glow.setAttribute('radius', '0.2');
-                    glow.setAttribute('height', Math.sqrt(Math.pow(x2-x1,2) + Math.pow(z2-z1,2)));
-                    glow.setAttribute('rotation', `90 ${Math.atan2(x2-x1, z2-z1) * 180 / Math.PI} 0`);
-                    glow.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 2');
+                    segment.setAttribute('position', `${(x1+x2)/2} 0.1 ${(z1+z2)/2}`);
+                    segment.setAttribute('radius', '0.2');
+                    segment.setAttribute('height', distance);
+                    segment.setAttribute('rotation', `90 ${Math.atan2(dx, dz) * 180 / Math.PI} 0`);
+                    segment.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 2');
                     
-                    pathContainer.appendChild(glow);
+                    pathContainer.appendChild(segment);
                 }
             }
         }
