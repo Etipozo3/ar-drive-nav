@@ -12,7 +12,14 @@
         body { margin: 0; overflow: hidden; font-family: sans-serif; }
         #search-container { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; z-index: 2000; }
         #destination { width: 100%; padding: 12px; border-radius: 20px; border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); color: white; outline: none; }
-    
+        
+        /* GUI AJUSTADA PARA REDMI */
+        #gui { 
+            position: fixed; top: 70px; left: 10px; 
+            background: rgba(0, 15, 25, 0.9); color: #00f2ff; 
+            padding: 10px; border-radius: 12px; z-index: 1500; 
+            width: 210px; border: 1px solid #00f2ff; font-size: 10px;
+        }
         .control-block { margin-bottom: 8px; }
         input[type=range] { width: 100%; accent-color: #00f2ff; margin: 4px 0; }
         .val-display { float: right; color: white; font-weight: bold; }
@@ -25,12 +32,16 @@
 
     <div id="search-container"><input type="text" id="destination" placeholder="Escribe destino..."></div>
     <div id="minimap-container"><div id="map"></div></div>
+
+    
+    <div style="text-align:center; font-weight:bold; margin-bottom:5px;">CALIBRACIÓN DE POSICIÓN</div>
+
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
         <a-camera rotation-reader></a-camera>
 
         <a-entity id="map-rig" position="0 -4 -20" rotation="0 0 0" scale="2 2 2">
-            <a-plane id="ground-map" rotation="-90 0 0" width="1200" height="1200" 
-                     material="transparent: true; opacity: 0; shader: flat;"></a-plane>
+            <a-plane id="ground-map" rotation="-90 0 0" width="120" height="120" 
+                     material="transparent: true; opacity: 0.4; shader: flat;"></a-plane>
             <a-entity id="neon-path"></a-entity>
         </a-entity>
     </a-scene>
@@ -46,6 +57,8 @@
         leafletMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
         userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 4 }).addTo(leafletMap);
+
+        
 
         function update() {
             rig.setAttribute('position', `${inputs.x.value} ${inputs.y.value} ${inputs.z.value}`);
@@ -111,10 +124,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
