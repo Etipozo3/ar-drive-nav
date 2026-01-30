@@ -2,167 +2,173 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Nav-AR 360: GUI de Precisión</title>
+    <title>Nav-AR Redmi Pro</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; }
-        
-        /* GUI LATERAL DE PRECISIÓN */
-        #gui {
-            position: fixed; top: 10px; right: 10px;
-            background: rgba(0, 20, 30, 0.9); color: #00f2ff;
-            padding: 15px; border-radius: 10px; z-index: 2000;
-            width: 250px; border: 1px solid #00f2ff;
-            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
-            font-size: 12px;
-        }
-        .control-block { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #00f2ff; }
-        .val-display { float: right; color: white; background: #333; padding: 2px 5px; border-radius: 3px; }
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-        #search-box {
-            position: fixed; top: 10px; left: 10px; z-index: 2000;
-            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px;
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        
+        /* BUSCADOR ADAPTADO A REDMI */
+        #search-container {
+            position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
+            width: 85%; z-index: 2000;
         }
         #destination { 
-            background: transparent; border: 1px solid #00f2ff; color: white;
-            padding: 8px; border-radius: 5px; width: 150px;
+            width: 100%; padding: 12px 20px; border-radius: 25px; 
+            border: 2px solid #00f2ff; background: rgba(0,0,0,0.7); 
+            color: white; font-size: 16px; outline: none; box-sizing: border-box;
+        }
+
+        /* MINIMAPA VISTA PÁJARO (Circular) */
+        #minimap-container {
+            position: fixed; bottom: 20px; right: 15px;
+            width: 120px; height: 120px; border-radius: 50%;
+            border: 3px solid #00f2ff; overflow: hidden; z-index: 2000;
+            box-shadow: 0 0 15px rgba(0,242,255,0.5);
+        }
+        #map { width: 100%; height: 100%; }
+
+        /* GUI DE CALIBRACIÓN COMPACTA */
+        #gui {
+            position: fixed; top: 80px; left: 10px;
+            background: rgba(0, 15, 25, 0.85); color: #00f2ff;
+            padding: 10px; border-radius: 12px; z-index: 1500;
+            width: 180px; border: 1px solid rgba(0,242,255,0.3);
+            font-size: 11px;
+        }
+        .control-block { margin-bottom: 8px; }
+        input[type=range] { width: 100%; accent-color: #00f2ff; margin: 0; }
+        .val-display { float: right; color: white; font-weight: bold; }
+        
+        button#save-btn {
+            width: 100%; background: #00f2ff; border: none; padding: 6px;
+            border-radius: 5px; font-weight: bold; margin-top: 5px; font-size: 10px;
         }
     </style>
 </head>
 <body>
 
-    <div id="search-box">
-        <input type="text" id="destination" placeholder="BUSCAR DESTINO...">
+    <div id="search-container">
+        <input type="text" id="destination" placeholder="¿A dónde vamos hoy?">
     </div>
 
+    <div id="minimap-container"><div id="map"></div></div>
+
     <div id="gui">
-        <div style="text-align: center; font-weight: bold; border-bottom: 1px solid #00f2ff; margin-bottom: 10px; padding-bottom: 5px;">SISTEMA DE CALIBRACIÓN</div>
+        <div style="text-align:center; margin-bottom:8px; opacity:0.7">AJUSTE DE PROYECCIÓN</div>
         
         <div class="control-block">
-            <label>Distancia (Z): <span id="z-val" class="val-display">-10</span></label>
-            <input type="range" id="input-z" min="-50" max="0" step="0.5" value="-10">
+            <label>DISTANCIA <span id="z-val" class="val-display">-10</span></label>
+            <input type="range" id="input-z" min="-40" max="-2" step="0.5" value="-10">
         </div>
 
         <div class="control-block">
-            <label>Desplazamiento (X): <span id="x-val" class="val-display">0</span></label>
-            <input type="range" id="input-x" min="-2000" max="20" step="0.1" value="0">
+            <label>LATERAL <span id="x-val" class="val-display">0</span></label>
+            <input type="range" id="input-x" min="-10" max="10" step="0.1" value="0">
         </div>
 
         <div class="control-block">
-            <label>Altura (Y): <span id="y-val" class="val-display">-3</span></label>
-            <input type="range" id="input-y" min="-10" max="5" step="0.1" value="-3">
+            <label>ALTURA <span id="y-val" class="val-display">-3</span></label>
+            <input type="range" id="input-y" min="-8" max="2" step="0.1" value="-3">
         </div>
 
         <div class="control-block">
-            <label>Rotación (Y-Rot): <span id="r-val" class="val-display">0</span></label>
+            <label>ROTACIÓN <span id="r-val" class="val-display">0</span></label>
             <input type="range" id="input-r" min="-180" max="180" step="1" value="0">
         </div>
 
-        <div class="control-block">
-            <label>Opacidad Mapa: <span id="o-val" class="val-display">0.7</span></label>
-            <input type="range" id="input-o" min="0" max="1" step="0.1" value="0.7">
-        </div>
-        
-        <button onclick="guardarConfig()" style="width:100%; background:#00f2ff; border:none; padding:5px; font-weight:bold;">GUARDAR LOG</button>
+        <button id="save-btn" onclick="console.log('Calibración guardada')">FIJAR POSICIÓN</button>
     </div>
 
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
         <a-camera rotation-reader></a-camera>
 
-        <a-entity id="map-rig" position="0 -3 -10" rotation="0 0 0">
-            <a-plane id="ground-map" 
-                     rotation="-90 0 0" 
-                     width="40" height="40" 
-                     material="transparent: true; opacity: 0.7; shader: flat;">
-            </a-plane>
+        <a-entity id="map-rig" position="0 -3 -10">
+            <a-plane id="ground-map" rotation="-90 0 0" width="35" height="35" 
+                     material="transparent: true; opacity: 0.6; shader: flat;"></a-plane>
             
             <a-entity id="neon-path"></a-entity>
         </a-entity>
     </a-scene>
 
     <script>
+        // --- VARIABLES DE ESCENA ---
         const rig = document.getElementById('map-rig');
         const mapPlane = document.getElementById('ground-map');
         let userCoords = null;
+        let leafletMap, userMarker, routeLine2D;
 
-        // --- LÓGICA DE CONTROL GUI ---
-        const inputs = {
-            x: document.getElementById('input-x'),
-            y: document.getElementById('input-y'),
-            z: document.getElementById('input-z'),
-            r: document.getElementById('input-r'),
-            o: document.getElementById('input-o')
-        };
+        // --- INICIALIZAR MINIMAPA LEAFLET ---
+        function initLeaflet() {
+            leafletMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
+            userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 6, fillOpacity: 1 }).addTo(leafletMap);
+        }
+        initLeaflet();
 
-        const displays = {
-            x: document.getElementById('x-val'),
-            y: document.getElementById('y-val'),
-            z: document.getElementById('z-val'),
-            r: document.getElementById('r-val'),
-            o: document.getElementById('o-val')
-        };
+        // --- GUI LOGIC ---
+        const inputs = { x: document.getElementById('input-x'), y: document.getElementById('input-y'), z: document.getElementById('input-z'), r: document.getElementById('input-r') };
+        const displays = { x: document.getElementById('x-val'), y: document.getElementById('y-val'), z: document.getElementById('z-val'), r: document.getElementById('r-val') };
 
-        // Función para actualizar medidas en tiempo real
-        function updateScene() {
-            // Actualizar Posición
+        function updateTransform() {
             rig.setAttribute('position', `${inputs.x.value} ${inputs.y.value} ${inputs.z.value}`);
-            // Actualizar Rotación
             rig.setAttribute('rotation', `0 ${inputs.r.value} 0`);
-            // Actualizar Opacidad
-            mapPlane.setAttribute('material', 'opacity', inputs.o.value);
-            
-            // Actualizar displays de texto
-            Object.keys(inputs).forEach(key => {
-                displays[key].innerText = inputs[key].value;
-            });
+            Object.keys(inputs).forEach(k => displays[k].innerText = inputs[k].value);
         }
+        Object.values(inputs).forEach(i => i.addEventListener('input', updateTransform));
 
-        // Escuchar cambios en los sliders
-        Object.values(inputs).forEach(input => {
-            input.addEventListener('input', updateScene);
-        });
-
-        function guardarConfig() {
-            console.log(`CONFIGURACIÓN ACTUAL: Pos(${inputs.x.value}, ${inputs.y.value}, ${inputs.z.value}) Rot(${inputs.r.value})`);
-            alert("Medidas guardadas en la consola (F12)");
-        }
-
-        // --- LÓGICA DE MAPAS Y RUTA ---
+        // --- GPS Y RUTAS ---
         navigator.geolocation.watchPosition(pos => {
             userCoords = [pos.coords.latitude, pos.coords.longitude];
-            const url = `https://static-maps.yandex.ru/1.x/?ll=${userCoords[1]},${userCoords[0]}&z=17&l=map&size=650,650&theme=dark`;
-            mapPlane.setAttribute('material', 'src', url);
+            
+            // Actualizar Minimapa
+            userMarker.setLatLng(userCoords);
+            leafletMap.panTo(userCoords);
+
+            // Actualizar Textura del mapa 3D
+            const staticMapUrl = `https://static-maps.yandex.ru/1.x/?ll=${userCoords[1]},${userCoords[0]}&z=17&l=map&size=600,600&theme=dark`;
+            mapPlane.setAttribute('material', 'src', staticMapUrl);
         }, null, {enableHighAccuracy: true});
 
         document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
-                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e.target.value}`);
+                const query = e.target.value;
+                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
                 const data = await resp.json();
-                if (data.length > 0) dibujarRuta(data[0].lat, data[0].lon);
+                if (data.length > 0) {
+                    const dLat = data[0].lat;
+                    const dLon = data[0].lon;
+                    dibujarRuta(dLat, dLon);
+                    e.target.blur(); // Ocultar teclado en Redmi
+                }
             }
         });
 
         async function dibujarRuta(dLat, dLon) {
             const container = document.getElementById('neon-path');
             container.innerHTML = '';
+            
             const url = `https://router.project-osrm.org/route/v1/driving/${userCoords[1]},${userCoords[0]};${dLon},${dLat}?geometries=geojson&overview=full`;
             const res = await fetch(url);
             const routeData = await res.json();
 
             if (routeData.routes.length > 0) {
-                // Dibujamos un cilindro de neón que atraviesa el mapa ajustado
-                const neonLine = document.createElement('a-cylinder');
-                neonLine.setAttribute('height', '60');
-                neonLine.setAttribute('radius', '0.15');
-                neonLine.setAttribute('rotation', '90 0 0');
-                neonLine.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 3');
-                container.appendChild(neonLine);
+                // 1. Dibujar en Minimapa 2D
+                if (routeLine2D) leafletMap.removeLayer(routeLine2D);
+                routeLine2D = L.geoJSON(routeData.routes[0].geometry, {style: {color: '#00f2ff', weight: 4}}).addTo(leafletMap);
+                
+                // 2. Dibujar Neón en Escena 3D (Cilindro luminoso)
+                const neon = document.createElement('a-cylinder');
+                neon.setAttribute('height', '50');
+                neon.setAttribute('radius', '0.2');
+                neon.setAttribute('rotation', '90 0 0');
+                neon.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 3');
+                container.appendChild(neon);
             }
         }
     </script>
 </body>
 </html>
-
