@@ -58,14 +58,14 @@
 
         <div class="control-block">
             <label>ALTURA (Y) <span id="y-val" class="val-display">-4</span></label>
-            <input type="range" id="input-y" min="-150" max="0" step="0.2" value="-4">
+            <input type="range" id="input-y" min="-350" max="0" step="0.2" value="-4">
         </div>
     </div>
 
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
         <a-camera rotation-reader></a-camera>
 
-        <a-entity id="map-rig" position="150 -4 -20" rotation="0 -180 0" scale="20 20 20">
+        <a-entity id="map-rig" position="150 -134 -200" rotation="0 -180 0" scale="35 35 35">
             <a-plane id="ground-map" rotation="-90 0 0" width="120" height="120" 
                      material="transparent: true; opacity: 0.4; shader: flat;"></a-plane>
             <a-entity id="neon-path"></a-entity>
@@ -157,4 +157,5 @@
     </script>
 </body>
 </html>
+
 
