@@ -2,30 +2,30 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Nav-AR Pro: Fixed Camera & Road</title>
+    <title>GPS AR: Horizonte Real</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        #video { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: -1; }
-        #ui {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 400px; z-index: 10; text-align: center;
+        body { margin: 0; overflow: hidden; background: #000; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: -1; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 100; display: flex; align-items: center; justify-content: center;
         }
-        input {
-            width: 100%; padding: 15px; border-radius: 25px; border: 2px solid #00f2ff;
-            background: rgba(0,0,0,0.8); color: white; outline: none;
-        }
-        #status {
-            margin-top: 10px; color: #00f2ff; font-size: 12px; font-weight: bold;
-            background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 10px;
-        }
+        button { padding: 20px; border-radius: 50px; border: none; background: #00f2ff; font-weight: bold; }
+        #ui { position: fixed; top: 20px; width: 100%; text-align: center; display: none; }
+        input { padding: 10px; border-radius: 20px; width: 70%; border: 2px solid #00f2ff; }
     </style>
 </head>
 <body>
 
+    <div id="overlay">
+        <button id="start">INICIAR GPS AR</button>
+    </div>
+
     <video id="video" autoplay playsinline></video>
+    
     <div id="ui">
         <input type="text" id="dest" placeholder="Destino...">
-        <div id="status">BUSCANDO CARRETERA</div>
     </div>
 
     <script type="importmap">
@@ -34,93 +34,88 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        let scene, camera, renderer, routeLine;
+        let isMoving = false;
 
-        let routeLine = null;
-        let isNavigating = false;
-
-        function createRoute() {
-            if (routeLine) scene.remove(routeLine);
-            const points = [];
-            for (let i = 0; i <= 20; i++) points.push(new THREE.Vector3(Math.sin(i*0.3)*i*0.1, -4, -i*2.5));
-            const curve = new THREE.CatmullRomCurve3(points);
-            const geometry = new THREE.TubeGeometry(curve, 64, 0.15, 8, false);
-            const material = new THREE.MeshPhongMaterial({ color: 0x00f2ff, emissive: 0x0044ff, transparent: true, opacity: 0 });
-            routeLine = new THREE.Mesh(geometry, material);
-            scene.add(routeLine);
-            isNavigating = true;
-        }
-
-        scene.add(new THREE.AmbientLight(0xffffff, 1));
-        camera.position.z = 2;
-
-        const input = document.getElementById('dest');
-        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') { input.blur(); createRoute(); } });
-
-        let faceLandmarker;
-        const video = document.getElementById("video");
-
-        async function init() {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task` },
-                runningMode: "VIDEO", numFaces: 1
-            });
-
-            // --- CORRECCIÓN 1: CAMARA TRASERA ---
-            const constraints = { 
-                video: { facingMode: { exact: "environment" } } // Forza la cámara de atrás
-            };
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-            } catch (err) {
-                // Si falla (ej. en PC sin cam trasera), intenta la normal
-                const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = fallback;
+        const startBtn = document.getElementById('start');
+        
+        startBtn.onclick = async () => {
+            // Solicitar permisos de orientación (Crucial para que la línea se quede en el suelo)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                await DeviceOrientationEvent.requestPermission();
             }
             
-            video.onloadeddata = () => animate();
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            init();
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Cámara trasera
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => { document.getElementById('video').srcObject = stream; });
+
+            // Sensor de movimiento: Esto hace que la línea "se quede" en el suelo
+            window.addEventListener('deviceorientation', (e) => {
+                // Convertimos la rotación del móvil a la rotación de la cámara 3D
+                const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0; // Norte
+                const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;   // Inclinación
+                const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0; // Balanceo
+
+                camera.rotation.set(beta, gamma, alpha, 'YZX');
+            });
+
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+            scene.add(light);
+
+            animate();
+        }
+
+        document.getElementById('dest').onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                e.target.blur();
+                createPath();
+            }
+        };
+
+        function createPath() {
+            if (routeLine) scene.remove(routeLine);
+            
+            const points = [];
+            // La línea se crea en el "mundo", no en la pantalla
+            for (let i = 0; i < 50; i++) {
+                points.push(new THREE.Vector3(
+                    Math.sin(i * 0.2) * 3, 
+                    -10, // Muy abajo para que parezca el suelo real
+                    -i * 5 // Se extiende hacia el horizonte
+                ));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(curve, 100, 0.3, 8, false);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x00f2ff, 
+                emissive: 0x0044ff,
+                transparent: true, 
+                opacity: 0.8 
+            });
+
+            routeLine = new THREE.Mesh(geometry, material);
+            scene.add(routeLine);
         }
 
         function animate() {
-            const results = faceLandmarker.detectForVideo(video, performance.now());
-
-            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-                const nose = results.faceLandmarks[0][1];
-                
-                // --- CORRECCIÓN 2: LÓGICA DE DETECCIÓN MEJORADA ---
-                // Para que solo salga cuando mires al suelo, el valor de nose.y debe ser alto.
-                // Ajustamos el umbral a 0.7 (más estricto que el 0.6 anterior)
-                const isLookingAtRoad = nose.y > 0.7; 
-
-                if (isNavigating) {
-                    if (isLookingAtRoad) {
-                        routeLine.material.opacity += (0.8 - routeLine.material.opacity) * 0.1;
-                        document.getElementById('status').innerText = "CARRETERA DETECTADA";
-                    } else {
-                        routeLine.material.opacity += (0 - routeLine.material.opacity) * 0.1;
-                        document.getElementById('status').innerText = "ENFOCA EL SUELO";
-                    }
-                }
-
-                // Ajuste de vista
-                camera.position.x += ((0.5 - nose.x) * 4 - camera.position.x) * 0.1;
-                camera.lookAt(0, -6, -20);
-            }
-
-            renderer.render(scene, camera);
             requestAnimationFrame(animate);
+            renderer.render(scene, camera);
         }
-
-        init();
     </script>
 </body>
 </html>
