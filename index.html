@@ -1,112 +1,204 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Three.js AR Simple</title>
+    <meta charset="utf-8">
+    <title>Nav-AR Pro: Final Edition</title>
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        #video {
-            position: fixed; top: 0; left: 0; min-width: 100%; min-height: 100%;
-            object-fit: cover; z-index: -1;
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        
+        /* BUSCADOR REDMI */
+        #search-container {
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+            width: 85%; z-index: 2000;
         }
-        #btn-permiso {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 20px; font-size: 1.2rem; background: #2ecc71; color: white;
-            border: none; border-radius: 10px; cursor: pointer; z-index: 100;
+        #destination { 
+            width: 100%; padding: 12px 20px; border-radius: 25px; 
+            border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); 
+            color: white; font-size: 16px; outline: none; box-shadow: 0 0 10px #00f2ff;
         }
+
+        /* GUI CALIBRACIÓN */
+        #gui {
+            position: fixed; top: 75px; left: 10px;
+            background: rgba(0, 15, 25, 0.9); color: #00f2ff;
+            padding: 12px; border-radius: 15px; z-index: 1500;
+            width: 190px; border: 1px solid rgba(0,242,255,0.5);
+            font-size: 11px;
+        }
+        .control-block { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 3px; font-weight: bold; }
+        input[type=range] { width: 100%; accent-color: #00f2ff; }
+        .val { float: right; color: white; }
+
+        /* MINIMAPA VISTA PÁJARO */
+        #minimap-container {
+            position: fixed; bottom: 20px; right: 15px;
+            width: 110px; height: 110px; border-radius: 50%;
+            border: 3px solid #00f2ff; overflow: hidden; z-index: 2000;
+        }
+        #map { width: 100%; height: 100%; }
+        
+        #gps-debug { position: fixed; bottom: 20px; left: 15px; color: #00f2ff; font-size: 10px; z-index: 2000; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
-    <video id="video" autoplay playsinline></video>
-    <button id="btn-permiso">ACTIVAR AR</button>
+    <div id="search-container">
+        <input type="text" id="destination" placeholder="¿A dónde vamos?">
+    </div>
 
-    <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    <div id="minimap-container"><div id="map"></div></div>
+    
+    <div id="gps-debug">GPS: Esperando señal...</div>
 
-        let scene, camera, renderer, cube;
-        let sensorActivado = false;
+    <div id="gui">
+        <div style="text-align:center; border-bottom:1px solid #00f2ff; margin-bottom:8px; padding-bottom:4px;">CALIBRACIÓN AR</div>
+        
+        <div class="control-block">
+            <label>ESCALA <span id="v-s" class="val">2.0</span></label>
+            <input type="range" id="i-s" min="0.5" max="10" step="0.1" value="2.0">
+        </div>
 
-        async function iniciarEscena() {
-            // 1. Setup Cámara Física (Video)
-            const video = document.getElementById('video');
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                console.error("No se pudo acceder a la cámara:", err);
+        <div class="control-block">
+            <label>DISTANCIA (Z) <span id="v-z" class="val">-20</span></label>
+            <input type="range" id="i-z" min="-100" max="-5" step="1" value="-20">
+        </div>
+
+        <div class="control-block">
+            <label>LATERAL (X) <span id="v-x" class="val">0</span></label>
+            <input type="range" id="i-x" min="-15" max="15" step="0.2" value="0">
+        </div>
+
+        <div class="control-block">
+            <label>ALTURA (Y) <span id="v-y" class="val">-4</span></label>
+            <input type="range" id="i-y" min="-15" max="2" step="0.2" value="-4">
+        </div>
+
+        <div class="control-block">
+            <label>ROTACIÓN <span id="v-r" class="val">0</span></label>
+            <input type="range" id="i-r" min="-180" max="180" step="1" value="0">
+        </div>
+    </div>
+
+    <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
+        <a-entity id="camera-rig">
+            <a-camera rotation-reader></a-camera>
+        </a-entity>
+
+        <a-entity id="mundo-fijo">
+            <a-plane id="map-plane" rotation="-90 0 0" width="120" height="120" 
+                     material="transparent: true; opacity: 0.5; shader: flat;"></a-plane>
+            <a-entity id="path-container"></a-entity>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        const rig = document.getElementById('camera-rig');
+        const mundo = document.getElementById('mundo-fijo');
+        const mapPlane = document.getElementById('map-plane');
+        const pathContainer = document.getElementById('path-container');
+        const debug = document.getElementById('gps-debug');
+        
+        let originCoords = null;
+        let leafletMap, userMarker, routeLine2D;
+
+        // --- CONTROLES GUI ---
+        const ids = ['s', 'z', 'x', 'y', 'r'];
+        const vals = {};
+        ids.forEach(id => {
+            vals[id] = document.getElementById('i-' + id);
+            vals[id].addEventListener('input', updateMundo);
+        });
+
+        function updateMundo() {
+            mundo.setAttribute('position', `${vals.x.value} ${vals.y.value} ${vals.z.value}`);
+            mundo.setAttribute('rotation', `0 ${vals.r.value} 0`);
+            mundo.setAttribute('scale', `${vals.s.value} ${vals.s.value} ${vals.s.value}`);
+            ids.forEach(id => document.getElementById('v-' + id).innerText = vals[id].value);
+        }
+        updateMundo();
+
+        // --- LÓGICA ESPACIAL (GPS a Metros) ---
+        function getMeters(lat1, lon1, lat2, lon2) {
+            const R = 6378137;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const x = dLon * Math.cos((lat1 + lat2) / 2 * Math.PI / 180) * R;
+            const z = dLat * R;
+            return { x: x, z: -z };
+        }
+
+        // --- INICIALIZAR MINIMAPA ---
+        leafletMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
+        userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 5, fillOpacity: 1 }).addTo(leafletMap);
+
+        // --- SEGUIMIENTO GPS ---
+        navigator.geolocation.watchPosition(pos => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            debug.innerText = `GPS OK (${accuracy.toFixed(1)}m)`;
+
+            if (!originCoords) {
+                originCoords = { lat: latitude, lon: longitude };
+                const url = `https://static-maps.yandex.ru/1.x/?ll=${longitude},${latitude}&z=15&l=map&size=650,650&theme=dark`;
+                mapPlane.setAttribute('material', 'src', url);
             }
 
-            // 2. Setup Three.js
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const offset = getMeters(originCoords.lat, originCoords.lon, latitude, longitude);
+            // Movemos la cámara, el mapa se queda en su sitio
+            rig.setAttribute('position', `${offset.x} 0 ${offset.z}`);
             
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
+            userMarker.setLatLng([latitude, longitude]);
+            leafletMap.panTo([latitude, longitude]);
+        }, null, { enableHighAccuracy: true });
 
-            // 3. Agregar el Cubo
-            const geometry = new THREE.BoxGeometry(1, 1, 1);
-            const material = new THREE.MeshNormalMaterial();
-            cube = new THREE.Mesh(geometry, material);
-            // Lo ponemos a 5 metros de distancia
-            cube.position.set(0, -10, 0); 
-            scene.add(cube);
-
-            // 4. Escuchar el Giroscopio manualmente
-            window.addEventListener('deviceorientation', manejarOrientacion);
-
-            animate();
-        }
-
-        function manejarOrientacion(event) {
-            if (!event.alpha) return;
-
-            // Convertir grados a radianes
-            const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0; // Z
-            const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;   // X
-            const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0; // Y
-
-            // Aplicar rotación a la cámara para que el mundo se quede "quieto"
-            // Nota: Este es un mapeo básico. Los ejes pueden variar según el navegador.
-            camera.rotation.set(beta, gamma, alpha, 'YZX');
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        // Lógica del Botón para Permisos (Especialmente iOS)
-        const btn = document.getElementById('btn-permiso');
-        btn.addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // Caso iOS
-                DeviceOrientationEvent.requestPermission()
-                    .then(state => {
-                        if (state === 'granted') {
-                            btn.style.display = 'none';
-                            iniciarEscena();
-                        }
-                    });
-            } else {
-                // Android / Otros
-                btn.style.display = 'none';
-                iniciarEscena();
+        // --- BUSCADOR Y RUTA ---
+        document.getElementById('destination').addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e.target.value}`);
+                const data = await resp.json();
+                if (data.length > 0) {
+                    dibujarRuta(data[0].lat, data[0].lon);
+                    e.target.blur();
+                }
             }
         });
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        async function dibujarRuta(dLat, dLon) {
+            pathContainer.innerHTML = '';
+            const url = `https://router.project-osrm.org/route/v1/driving/${originCoords.lon},${originCoords.lat};${dLon},${dLat}?geometries=geojson&overview=full`;
+            const res = await fetch(url);
+            const routeData = await res.json();
+
+            if (routeData.routes.length > 0) {
+                if (routeLine2D) leafletMap.removeLayer(routeLine2D);
+                routeLine2D = L.geoJSON(routeData.routes[0].geometry, {style: {color: '#00f2ff', weight: 5}}).addTo(leafletMap);
+                
+                const coords = routeData.routes[0].geometry.coordinates;
+                // Dibujamos los primeros 40 puntos para ver las curvas
+                for (let i = 0; i < coords.length - 1 && i < 40; i++) {
+                    let p1 = getMeters(originCoords.lat, originCoords.lon, coords[i][1], coords[i][0]);
+                    let p2 = getMeters(originCoords.lat, originCoords.lon, coords[i+1][1], coords[i+1][0]);
+
+                    const segment = document.createElement('a-cylinder');
+                    const dx = p2.x - p1.x;
+                    const dz = p2.z - p1.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    
+                    segment.setAttribute('position', `${(p1.x+p2.x)/2} 0.1 ${(p1.z+p2.z)/2}`);
+                    segment.setAttribute('radius', '0.25');
+                    segment.setAttribute('height', dist);
+                    segment.setAttribute('rotation', `90 ${Math.atan2(dx, dz) * 180 / Math.PI} 0`);
+                    segment.setAttribute('material', 'color: #00f2ff; emissive: #00f2ff; emissiveIntensity: 3');
+                    pathContainer.appendChild(segment);
+                }
+            }
+        }
     </script>
 </body>
 </html>
-
-
