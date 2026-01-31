@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Nav-AR: Conexión Dinámica</title>
+    <title>Nav-AR: Minimapa Inteligente</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -10,48 +10,26 @@
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; }
-        
-        /* Buscador */
-        #search-container {
-            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-            width: 85%; z-index: 2000;
-        }
-        #destination { 
-            width: 100%; padding: 12px; border-radius: 25px; 
-            border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); 
-            color: white; outline: none; box-shadow: 0 0 15px rgba(0,242,255,0.4);
-        }
-
-        /* Panel de Control */
-        #gui {
-            position: fixed; top: 70px; left: 10px;
-            background: rgba(0, 15, 25, 0.9); color: #00f2ff;
-            padding: 10px; border-radius: 15px; z-index: 1500;
-            width: 180px; border: 1px solid #00f2ff; font-size: 10px;
-        }
+        #search-container { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: 85%; z-index: 2000; }
+        #destination { width: 100%; padding: 12px; border-radius: 25px; border: 2px solid #00f2ff; background: rgba(0,0,0,0.8); color: white; outline: none; box-shadow: 0 0 15px rgba(0,242,255,0.4); }
+        #gui { position: fixed; top: 70px; left: 10px; background: rgba(0, 15, 25, 0.9); color: #00f2ff; padding: 10px; border-radius: 15px; z-index: 1500; width: 180px; border: 1px solid #00f2ff; font-size: 10px; }
         .control-block { margin-bottom: 8px; }
         input[type=range] { width: 100%; accent-color: #00f2ff; }
         .val { float: right; color: white; }
-
-        /* Minimapa */
-        #minimap-container {
-            position: fixed; bottom: 20px; right: 15px;
-            width: 100px; height: 100px; border-radius: 50%;
-            border: 2px solid #00f2ff; overflow: hidden; z-index: 2000;
-        }
+        #minimap-container { position: fixed; bottom: 20px; right: 15px; width: 120px; height: 120px; border-radius: 50%; border: 3px solid #00f2ff; overflow: hidden; z-index: 2000; box-shadow: 0 0 10px #000; }
         #map { width: 100%; height: 100%; }
     </style>
 </head>
 <body>
 
     <div id="search-container">
-        <input type="text" id="destination" placeholder="Escribe destino...">
+        <input type="text" id="destination" placeholder="Buscar destino...">
     </div>
 
     <div id="minimap-container"><div id="map"></div></div>
 
     <div id="gui">
-        <div style="text-align:center; font-weight:bold; margin-bottom:5px;">AJUSTE DE ANCLAJE</div>
+        <div style="text-align:center; font-weight:bold; margin-bottom:5px;">AJUSTE AR</div>
         <div class="control-block"><label>ESCALA <span id="v-s" class="val">2.5</span></label><input type="range" id="i-s" min="0.5" max="10" step="0.1" value="2.5"></div>
         <div class="control-block"><label>DISTANCIA (Z) <span id="v-z" class="val">-20</span></label><input type="range" id="i-z" min="-100" max="-5" step="1" value="-20"></div>
         <div class="control-block"><label>LATERAL (X) <span id="v-x" class="val">0</span></label><input type="range" id="i-x" min="-15" max="15" step="0.2" value="0"></div>
@@ -62,16 +40,12 @@
     <a-scene embedded vr-mode-ui="enabled: false" arjs="sourceType: webcam; debugUIEnabled: false;">
         <a-entity id="camera-rig">
             <a-camera rotation-reader></a-camera>
-            <a-light type="point" intensity="1" distance="10" color="#00f2ff"></a-light>
         </a-entity>
 
         <a-entity id="mundo-fijo">
-            <a-plane id="map-plane" rotation="-90 0 0" width="120" height="120" 
-                     material="transparent: true; opacity: 0.4; shader: flat;"></a-plane>
-            
+            <a-plane id="map-plane" rotation="-90 0 0" width="120" height="120" material="transparent: true; opacity: 0.4; shader: flat;"></a-plane>
             <a-entity id="path-fixed-container"></a-entity>
         </a-entity>
-
         <a-entity id="dynamic-link-container"></a-entity>
     </a-scene>
 
@@ -83,32 +57,25 @@
         const dynamicLink = document.getElementById('dynamic-link-container');
         
         let originCoords = null;
-        let routeCoords = []; // Guardamos los puntos de la ruta
-        let leafletMap, userMarker, routeLine2D;
+        let routeCoords = [];
+        let leafletMap, userMarker, destinationMarker, routeLine2D;
 
-        // --- GUI LOGIC ---
+        // GUI
         const controls = ['s', 'z', 'x', 'y', 'r'];
         function updateGUI() {
-            const s = document.getElementById('i-s').value;
-            const z = document.getElementById('i-z').value;
-            const x = document.getElementById('i-x').value;
-            const y = document.getElementById('i-y').value;
-            const r = document.getElementById('i-r').value;
-            
+            const s = document.getElementById('i-s').value, z = document.getElementById('i-z').value, x = document.getElementById('i-x').value, y = document.getElementById('i-y').value, r = document.getElementById('i-r').value;
             mundo.setAttribute('position', `${x} ${y} ${z}`);
             mundo.setAttribute('rotation', `0 ${r} 0`);
             mundo.setAttribute('scale', `${s} ${s} ${s}`);
-            
             controls.forEach(c => document.getElementById('v-'+c).innerText = document.getElementById('i-'+c).value);
         }
         controls.forEach(c => document.getElementById('i-'+c).addEventListener('input', updateGUI));
         updateGUI();
 
-        // --- GPS & MOVIMIENTO ---
+        // GPS
         function getMeters(lat1, lon1, lat2, lon2) {
             const R = 6378137;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
             const x = dLon * Math.cos((lat1 + lat2) / 2 * Math.PI / 180) * R;
             const z = dLat * R;
             return { x, z: -z };
@@ -116,7 +83,7 @@
 
         leafletMap = L.map('map', { zoomControl: false, attributionControl: false }).setView([0,0], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap);
-        userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 5 }).addTo(leafletMap);
+        userMarker = L.circleMarker([0, 0], { color: '#00f2ff', radius: 6, fillOpacity: 0.9 }).addTo(leafletMap);
 
         navigator.geolocation.watchPosition(pos => {
             const { latitude, longitude } = pos.coords;
@@ -126,20 +93,22 @@
             }
             const offset = getMeters(originCoords.lat, originCoords.lon, latitude, longitude);
             rig.setAttribute('position', `${offset.x} 0 ${offset.z}`);
-            
             userMarker.setLatLng([latitude, longitude]);
-            leafletMap.panTo([latitude, longitude]);
-
-            // Actualizar la línea "elástica" en cada movimiento
+            
+            // Si no hay ruta, seguimos al usuario. Si hay ruta, el zoom es automático.
+            if (!routeLine2D) { leafletMap.panTo([latitude, longitude]); }
             actualizarEnlaceDinamico(offset);
         }, null, { enableHighAccuracy: true });
 
-        // --- RUTA ---
+        // BUSCADOR CON VISTA DE PÁJARO MEJORADA
         document.getElementById('destination').addEventListener('keypress', async (e) => {
             if (e.key === 'Enter') {
                 const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e.target.value}`);
                 const data = await resp.json();
-                if (data.length > 0) dibujarRutaPro(data[0].lat, data[0].lon);
+                if (data.length > 0) {
+                    dibujarRutaPro(data[0].lat, data[0].lon);
+                    e.target.blur();
+                }
             }
         });
 
@@ -152,15 +121,22 @@
             if (routeData.routes.length > 0) {
                 routeCoords = routeData.routes[0].geometry.coordinates;
                 
-                // Dibujamos la ruta fija (excepto el tramo que va a nosotros)
-                for (let i = 0; i < routeCoords.length - 1 && i < 40; i++) {
+                // 1. ACTUALIZAR MINIMAPA (VISTA PÁJARO)
+                if (routeLine2D) leafletMap.removeLayer(routeLine2D);
+                if (destinationMarker) leafletMap.removeLayer(destinationMarker);
+                
+                routeLine2D = L.geoJSON(routeData.routes[0].geometry, { style: { color: '#00f2ff', weight: 4, opacity: 0.8 } }).addTo(leafletMap);
+                destinationMarker = L.marker([dLat, dLon]).addTo(leafletMap);
+                
+                // EL TRUCO: Ajustar el mapa para que se vea TODO
+                leafletMap.fitBounds(routeLine2D.getBounds(), { padding: [20, 20] });
+
+                // 2. DIBUJAR EN EL MUNDO REAL (AR)
+                for (let i = 0; i < routeCoords.length - 1 && i < 50; i++) {
                     let p1 = getMeters(originCoords.lat, originCoords.lon, routeCoords[i][1], routeCoords[i][0]);
                     let p2 = getMeters(originCoords.lat, originCoords.lon, routeCoords[i+1][1], routeCoords[i+1][0]);
-
                     const segment = document.createElement('a-cylinder');
-                    const dx = p2.x - p1.x; const dz = p2.z - p1.z;
-                    const dist = Math.sqrt(dx*dx + dz*dz);
-                    
+                    const dx = p2.x - p1.x, dz = p2.z - p1.z, dist = Math.sqrt(dx*dx + dz*dz);
                     segment.setAttribute('position', `${(p1.x+p2.x)/2} 0.1 ${(p1.z+p2.z)/2}`);
                     segment.setAttribute('radius', '0.25');
                     segment.setAttribute('height', dist);
@@ -174,18 +150,9 @@
         function actualizarEnlaceDinamico(miPosMetros) {
             if (routeCoords.length === 0) return;
             dynamicLink.innerHTML = '';
-
-            // Punto 1 de la ruta (donde empieza el dibujo fijo)
             const p1 = getMeters(originCoords.lat, originCoords.lon, routeCoords[0][1], routeCoords[0][0]);
-
-            // Dibujamos una línea que conecta nuestra cámara con el inicio de la ruta fija
-            // Esto crea el efecto de que la indicación "sale" de nosotros
             const link = document.createElement('a-entity');
-            link.setAttribute('line', {
-                start: `${miPosMetros.x} 0.1 ${miPosMetros.z}`,
-                end: `${p1.x} 0.1 ${p1.z}`,
-                color: '#ff00ff' // Color diferente para distinguir el "cable" de conexión
-            });
+            link.setAttribute('line', { start: `${miPosMetros.x} 0.1 ${miPosMetros.z}`, end: `${p1.x} 0.1 ${p1.z}`, color: '#00f2ff' });
             dynamicLink.appendChild(link);
         }
     </script>
